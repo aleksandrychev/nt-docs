@@ -4,8 +4,22 @@ const path = require('path');
 const {readdir} = require('fs').promises;
 const contentTreeToJson = require('../../contentTreeToJson');
 const {process} = require("../../contentTreeToJson");
+const {execSync} = require('child_process');
 
-const contentPath = path.resolve(__dirname + '/../../../content');
+const sitePath = path.resolve(__dirname + '/../../..');
+const contentPath = path.resolve(sitePath + '/content');
+
+// site params from the resolved Hugo config (hugo lowercases all keys)
+const siteParams = JSON.parse(execSync('hugo config --format json', {cwd: sitePath}).toString()).params || {};
+
+// replace {{< params "key" >}} and {{% params "key" %}} shortcodes with their values from the site config
+const resolveParamsShortcodes = (text) => text.replace(
+    /\{\{[<%]\s*params\s+"([^"]+)"\s*[>%]\}\}/g,
+    (shortcode, key) => {
+        const value = key.toLowerCase().split('.').reduce((obj, k) => obj?.[k], siteParams);
+        return value === undefined ? shortcode : String(value);
+    }
+);
 
 (async () => {
     let index = new FlexSearch.Document({
@@ -25,7 +39,7 @@ const contentPath = path.resolve(__dirname + '/../../../content');
 
         for (const item of jsonTree) {
             docIndex++;
-            const content = fs.readFileSync(item.filename).toString();
+            const content = resolveParamsShortcodes(fs.readFileSync(item.filename).toString());
             const headersMatches = content.matchAll(/^\s*#{1,6}\s*(.*?)$/gm);
             let copiedBC = [...breadCrumbs];
             copiedBC.push({title:  item.title, url:  item.url});
